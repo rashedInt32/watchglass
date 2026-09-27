@@ -156,12 +156,19 @@ fn same_apart_from_time(a: &Summary, b: &Summary) -> bool {
     a.top == b.top && a.counts == b.counts && a.sessions == b.sessions && a.panes == b.panes
 }
 
-fn truncate(s: &str, cap: usize) -> String {
-    let s = s.trim();
-    if s.chars().count() <= cap {
-        return s.to_string();
+/// One readable line: no private-use glyphs (Nerd Font prompt icons show
+/// as boxes outside a terminal), no control characters, single spaces.
+fn snippet(s: &str, cap: usize) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .filter(|c| !matches!(*c as u32, 0xE000..=0xF8FF | 0xF0000..=0x10FFFD))
+        .collect();
+    let joined = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    if joined.chars().count() <= cap {
+        return joined;
     }
-    format!("{}…", s.chars().take(cap).collect::<String>())
+    format!("{}…", joined.chars().take(cap).collect::<String>())
 }
 
 fn build(g: &Inner) -> Summary {
@@ -181,7 +188,7 @@ fn build(g: &Inner) -> Summary {
                 level: v.map(|v| v.level).unwrap_or(Level::Idle),
                 confidence: v.map(|v| v.confidence).unwrap_or(0.0),
                 source: v.map(|v| v.source.clone()).unwrap_or_else(|| "none".into()),
-                snippet: truncate(s.last_text.as_deref().unwrap_or(""), 160),
+                snippet: snippet(s.last_text.as_deref().unwrap_or(""), 160),
                 updated_at: s.updated_at,
             }
         })
@@ -210,7 +217,7 @@ fn build(g: &Inner) -> Summary {
                 level: v.map(|v| v.level).unwrap_or(Level::Idle),
                 confidence: v.map(|v| v.confidence).unwrap_or(0.0),
                 source: v.map(|v| v.source.clone()).unwrap_or_else(|| "none".into()),
-                snippet: truncate(g.tails.get(&p.id).map(String::as_str).unwrap_or(""), 160),
+                snippet: snippet(g.tails.get(&p.id).map(String::as_str).unwrap_or(""), 160),
             }
         })
         .collect();
@@ -291,8 +298,10 @@ mod tests {
     }
 
     #[test]
-    fn truncate_keeps_short_text_and_marks_cut_text() {
-        assert_eq!(truncate("  hi  ", 10), "hi");
-        assert_eq!(truncate("abcdefghij", 4), "abcd…");
+    fn snippet_is_one_clean_line() {
+        assert_eq!(snippet("  hi  ", 10), "hi");
+        assert_eq!(snippet("abcdefghij", 4), "abcd…");
+        assert_eq!(snippet("\u{ebca} \u{f120}", 40), "", "an icon-only prompt says nothing");
+        assert_eq!(snippet("FAIL\tsrc/x.ts   \n  1 failed", 40), "FAIL src/x.ts 1 failed");
     }
 }

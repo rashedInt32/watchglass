@@ -13,7 +13,11 @@ pub const TRAY_ID: &str = "watchglass";
 pub const PANEL: &str = "panel";
 pub const MAIN: &str = "main";
 pub const SHORTCUT: &str = "ctrl+alt+w";
-const SIZE: u32 = 18;
+/// Rendered at 2x; tray-icon scales any image to 18 pt tall, so this is
+/// crisp on Retina menu bars.
+const SIZE: u32 = 36;
+/// A 12 pt dot inside the 18 pt row.
+const DOT_RADIUS: f32 = 12.0;
 /// A tray click can blur the panel before the click itself arrives; the
 /// blur hides it and the click must not show it again. Likewise a blur
 /// right after showing is the window system settling, not the user leaving.
@@ -36,14 +40,13 @@ fn color(level: Level) -> [u8; 3] {
     }
 }
 
-/// A filled, antialiased dot. Small images display at their pixel size in
-/// the menu bar, so 18 px is one menu bar row.
+/// A filled, antialiased dot.
 pub fn dot(level: Level) -> Image<'static> {
     let [r, g, b] = color(level);
     let n = SIZE as usize;
     let mut rgba = vec![0u8; n * n * 4];
     let c = (n as f32 - 1.0) / 2.0;
-    let radius = c - 2.0;
+    let radius = DOT_RADIUS;
     for y in 0..n {
         for x in 0..n {
             let d = ((x as f32 - c).powi(2) + (y as f32 - c).powi(2)).sqrt();
@@ -97,7 +100,8 @@ pub fn update(app: &AppHandle<Wry>, top: Level, needs_you: usize) {
     let _ = app.clone().run_on_main_thread(move || {
         if let Some(tray) = app.tray_by_id(TRAY_ID) {
             let _ = tray.set_icon(Some(dot(top)));
-            let _ = tray.set_title(if needs_you > 0 { Some(needs_you.to_string()) } else { None });
+            // tray-icon leaves the old title in place for `None`; an empty string clears it.
+            let _ = tray.set_title(Some(if needs_you > 0 { needs_you.to_string() } else { String::new() }));
             let _ = tray.set_tooltip(Some(format!("watchglass · {}", format!("{top:?}").to_lowercase())));
         }
     });

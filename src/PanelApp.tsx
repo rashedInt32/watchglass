@@ -213,7 +213,7 @@ function RowView({ row, index, selected, where, onGo, onAnswer, onSelect }: RowP
         <span className={`prow-level prow-level--${level}`}>{LEVEL_WORD[level]}</span>
         <kbd className="prow-index">{index < 9 ? index + 1 : ""}</kbd>
       </div>
-      {snippet && <div className="prow-snippet">{snippet}</div>}
+      {snippet && <div className={`prow-snippet${row.kind === "pane" ? " prow-snippet--mono" : ""}`}>{snippet}</div>}
       {canAnswer && (
         <div className="prow-actions">
           <button
