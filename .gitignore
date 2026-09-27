@@ -13,7 +13,7 @@ dist-ssr
 *.local
 
 # demo recording intermediate; the mp4 and gif are committed
-docs/demo.webm
+docs/*.webm
 
 # Editor directories and files
 .vscode/*

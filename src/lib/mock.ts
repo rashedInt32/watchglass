@@ -331,6 +331,16 @@ export function createMockBackend(): Backend {
     },
     async sendKeys(id, keys) {
       console.info("[mock] send-keys", id, keys);
+      // Answering a waiting session moves it on, as the real one would.
+      const session = SESSIONS.find((s) => s.paneId === id && s.status === "waiting");
+      if (!session) return;
+      const approved = keys.includes("1");
+      session.status = approved ? "busy" : "idle";
+      session.lastText = approved ? "Running `pnpm publish --dry-run`…" : "Okay, skipping the publish.";
+      session.updatedAt = Date.now();
+      sub?.onClaude([...SESSIONS]);
+      pushVerdict(verdict(session.sessionId, "claude", approved ? "working" : "idle", "rule"));
+      summarySub?.(buildSummary());
     },
     async sendLine(id, text) {
       console.info("[mock] send-line", id, text);

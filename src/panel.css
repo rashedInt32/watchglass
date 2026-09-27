@@ -209,3 +209,19 @@ body.panel-body {
   white-space: nowrap;
   overflow: hidden;
 }
+
+/* Demo stage: the panel at its real size on a dark backdrop, caption below. */
+body.panel-demo {
+  padding: 0;
+  background: #0b1220;
+}
+body.panel-demo .panel {
+  width: 420px;
+  height: 560px;
+  margin: 40px auto 0;
+}
+body.panel-demo .caption {
+  bottom: 44px;
+  max-width: 92vw;
+  font-size: 19px;
+}

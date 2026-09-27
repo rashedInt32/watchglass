@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import "./App.css";
 import "./panel.css";
+import { DemoCaption } from "./components/DemoCaption";
 import { chromeVars, fontFamilyCss, toTerminalTheme, type Appearance } from "./lib/appearance";
 import { backend } from "./lib/backend";
 import type { Level, PaneRow, SessionRow, Summary } from "./lib/ipc";
@@ -43,6 +44,8 @@ export default function PanelApp() {
 
   useEffect(() => {
     document.body.classList.add("panel-body");
+    // `?demo=1` frames the panel on a stage for the recorded demo.
+    if (new URLSearchParams(window.location.search).get("demo")) document.body.classList.add("panel-demo");
     void backend.subscribeSummary(setSummary).catch(() => setSummary(EMPTY));
     void backend.verdictsPath().then(setPath).catch(() => {});
     void backend.ghosttyAppearance().then(setAppearance).catch(() => {});
@@ -177,6 +180,7 @@ export default function PanelApp() {
         <span>o board</span>
         <span>esc</span>
       </footer>
+      {backend.kind === "mock" && <DemoCaption />}
     </div>
   );
 }

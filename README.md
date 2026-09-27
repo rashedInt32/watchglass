@@ -1,21 +1,31 @@
 # watchglass
 
-Everything running in your tmux, in one window, with Jev telling you what
-needs you first.
+Everything running in your tmux, in your menu bar, with Jev telling you
+what needs you first.
 
-Every tmux pane becomes a live tile that mirrors the real pane, rendered by
-Ghostty's terminal engine. Every Claude Code session is listed on the left.
-Jev judges each pane and each session on a five-step ladder, and colour and
-order follow: red needs you, orange is failing, amber is a warning, green
-is working, grey is idle. No configuration. Nothing is started by the app.
+watchglass watches every tmux pane and every Claude Code session. Jev
+judges each on a five-step ladder, and the menu bar dot takes the loudest
+colour: red needs you, orange is failing, amber is a warning, green is
+working, grey is idle. Click it for the list, answer a permission prompt
+with one key, jump to the pane. The board, a window of live tiles rendered
+by Ghostty's terminal engine, is one key further. No configuration. Nothing
+is started by the app. The verdicts are also written to a file for your
+editor and your tmux status line.
 
 ## Demo
 
-![watchglass demo: tmux panes as live tiles, Claude sessions on the left, Jev colours, approve, reply, jump, search, focus, new pane](docs/demo.gif)
+The menu bar list:
 
-Forty seconds, recorded against the app's scripted mock so the panes are
-reproducible: [docs/demo.mp4](docs/demo.mp4). Re-record with `pnpm demo`
-then `pnpm demo:encode` (needs Chrome and ffmpeg).
+![watchglass panel: Claude sessions and panes, loudest first, approve with one key, jump with Enter](docs/demo-panel.gif)
+
+The board:
+
+![watchglass board: tmux panes as live tiles, Claude sessions on the left, Jev colours, approve, jump, search, focus, new pane](docs/demo.gif)
+
+Both parts in one file: [docs/demo.mp4](docs/demo.mp4). Recorded against
+the app's scripted mock so the panes are reproducible; the menu bar item
+itself is not in the recording. Re-record with `pnpm demo` then
+`pnpm demo:encode` (needs Chrome and ffmpeg).
 
 ## Status
 
