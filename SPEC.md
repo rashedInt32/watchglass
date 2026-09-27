@@ -126,25 +126,65 @@ h hide the pane, i one-line input, ⇧N new pane, s order, ? keys.
 ### 5.6 Actions, not a terminal
 
 watchglass does not emulate keyboard input. It offers explicit actions,
-each one a `tmux send-keys`: a reply box per Claude session (`-l` text
-then Enter), Approve (`1`) and Reject (`Escape`) while a session waits, a
-one-line command box, Enter, and Ctrl-C per tile, and ⇧N to open a new
-tmux window running a command, which the poller picks up as a tile. For
-anything deeper, `g` moves the tmux client to the pane.
+each one a `tmux send-keys`: Approve (`1`) and Reject (`Escape`) while a
+session waits, in the panel and on the board; a one-line command box,
+Enter, and Ctrl-C per tile; and ⇧N to open a new tmux window running a
+command, which the poller picks up as a tile. A free-text reply box was
+tried and removed: it invited typing, and the tile input covers the rare
+need. For anything deeper, `g` or Enter in the panel moves the tmux client
+to the pane.
+
+### 5.7 Service and menu bar
+
+The process is a menu bar service; windows are views on it. Discovery,
+taps, and judgment run from launch with no window open: the poller taps
+every pane it finds, so a pane is judged on its scrollback the moment it
+appears and on every change after. The core keeps one picture, the
+summary: sessions and panes with their level, source, confidence, and a
+snippet (a session's last assistant text, a pane's last line), sorted
+loudest first, with per-level counts in which a session and its own pane
+count once.
+
+The menu bar item is a dot in the loudest level's colour, with the number
+of attention and failing items as its title. A left click or ⌃⌥W toggles
+the panel: a frameless window under the item listing the summary, with
+Enter, 1…9, a, r, i, o, and Esc as its keys. It hides when it loses focus.
+The menu offers Show list, Open the board, Start at login, and Quit. The
+board is created on demand from its window config and destroyed on close;
+the Dock icon exists only while it is open. Closing every window never
+quits; only Quit does.
+
+Notifications belong to the service: a verdict rising into failing or
+attention, rate limited per subject, skipped while the board has focus.
+
+The summary is written to `$XDG_STATE_HOME/watchglass/verdicts.json`
+(default `~/.local/state/watchglass/verdicts.json`), atomically and only
+when it changed. It is the contract for other consumers, such as a Neovim
+picker or a tmux status line.
 
 ## 6. IPC contract
 
-Commands: `subscribe(on_chunk, on_panes, on_claude, on_verdict)`,
-`tmux_available`, `list_panes`, `attach_pane(id)`, `detach_pane(id)`,
-`focus_pane(id)`, `send_keys(id, keys[])`, `claude_sessions`,
-`ghostty_appearance`, `jev_status`.
+Commands: `subscribe(on_chunk, on_panes, on_claude, on_verdict)` for the
+board, `subscribe_summary(on_summary)` and `summary` for the panel,
+`tmux_available`, `tmux_status`, `list_panes`, `attach_pane(id)`,
+`detach_pane(id)`, `focus_pane(id)`, `send_keys(id, keys[])`,
+`send_line(id, text)`, `new_window(session, name, command)`,
+`claude_sessions`, `ghostty_appearance`, `jev_status`, `open_main`,
+`hide_panel`, `verdicts_path`. A subscription is per window label and
+replaced on reload; `attach_pane` returns the pane's screen while the tap
+itself belongs to the poller.
 
 ```ts
 type ChunkMsg   = { id; seq; t; data /* base64 */ };
 type PaneInfo   = { id; session; windowIndex; windowName; paneIndex; pid; command; title; cols; rows; cwd; active; attached };
 type ClaudeSession = { sessionId; pid; name; cwd; status; statusUpdatedAt; updatedAt; tmux; paneId; lastText; lastTextAt };
 type VerdictMsg = { id; kind: "pane" | "claude"; level; confidence; probabilities; source: "jev" | "rule"; at };
+type SessionRow = { sessionId; name; cwd; status; tmux; paneId; level; confidence; source; snippet; updatedAt };
+type PaneRow    = { id; session; windowIndex; windowName; paneIndex; command; title; cwd; level; confidence; source; snippet };
+type Summary    = { updatedAt; top: Level; counts: Partial<Record<Level, number>>; sessions: SessionRow[]; panes: PaneRow[] };
 ```
+
+`Summary` is also the schema of `verdicts.json`.
 
 ## 7. Acceptance criteria
 
@@ -161,6 +201,11 @@ type VerdictMsg = { id; kind: "pane" | "claude"; level; confidence; probabilitie
    every pipe.
 9. Unit tests cover pane parsing, escape stripping, transcript parsing,
    question building, verdict parsing, rules, and level ordering.
+10. With no window open, a pane that starts failing turns the menu bar dot
+    orange and updates `verdicts.json` within a few seconds.
+11. ⌃⌥W shows the panel with the same order the board uses; Enter on a row
+    moves the tmux client there and hides the panel.
+12. Closing the board leaves the service, the taps, and the file alive.
 
 ## 8. Risks
 
