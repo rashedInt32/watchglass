@@ -42,7 +42,11 @@ pub struct PaneInfo {
     pub piped: bool,
 }
 
-const FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_pid}\t#{pane_current_command}\t#{pane_title}\t#{pane_width}\t#{pane_height}\t#{pane_current_path}\t#{pane_active}\t#{window_active}\t#{session_attached}\t#{pane_pipe}";
+/// Field separator for `list-panes -F`. A printable ASCII sequence: tmux
+/// rewrites tabs and non-ASCII as `_` for a client without a UTF-8 locale,
+/// which is exactly what a Finder-launched app is.
+pub const SEP: &str = "<<wg>>";
+const FORMAT: &str = "#{pane_id}<<wg>>#{session_name}<<wg>>#{window_index}<<wg>>#{window_name}<<wg>>#{pane_index}<<wg>>#{pane_pid}<<wg>>#{pane_current_command}<<wg>>#{pane_title}<<wg>>#{pane_width}<<wg>>#{pane_height}<<wg>>#{pane_current_path}<<wg>>#{pane_active}<<wg>>#{window_active}<<wg>>#{session_attached}<<wg>>#{pane_pipe}";
 const SCROLLBACK_LINES: u32 = 3000;
 const TAIL_POLL: Duration = Duration::from_millis(80);
 const POLL: Duration = Duration::from_millis(1500);
@@ -104,6 +108,9 @@ fn socket_dir() -> PathBuf {
 
 fn raw(args: &[&str], socket: Option<&Path>) -> Result<Vec<u8>, String> {
     let mut cmd = Command::new(tmux_path());
+    // Without a UTF-8 locale tmux sanitises its output, turning every
+    // non-ASCII character (and tabs) into `_`, in formats and captures alike.
+    cmd.env("LC_ALL", "en_US.UTF-8");
     if let Some(s) = socket {
         cmd.arg("-S").arg(s);
     }
@@ -187,7 +194,7 @@ pub fn list_panes() -> Result<Vec<PaneInfo>, String> {
 }
 
 pub fn parse_line(line: &str) -> Option<PaneInfo> {
-    let f: Vec<&str> = line.splitn(15, '\t').collect();
+    let f: Vec<&str> = line.splitn(15, SEP).collect();
     if f.len() < 14 {
         return None;
     }
@@ -624,21 +631,29 @@ pub fn set_output_hook(hook: Arc<dyn Fn(&str) + Send + Sync>) {
 mod tests {
     use super::*;
 
+    fn join(fields: &[&str]) -> String {
+        fields.join(SEP)
+    }
+
     #[test]
     fn parses_list_panes_lines() {
-        let line = "%3\tmain\t1\tnvim\t0\t17559\tclaude-hl\t✳ Jev tooling\t230\t60\t/Users/me/proj\t1\t1\t1\t1";
-        let p = parse_line(line).unwrap();
+        let line = join(&["%3", "main", "1", "nvim", "0", "17559", "claude-hl", "✳ Jev tooling", "230", "60", "/Users/me/proj", "1", "1", "1", "1"]);
+        let p = parse_line(&line).unwrap();
         assert_eq!(p.id, "%3");
         assert_eq!(p.session, "main");
         assert_eq!(p.window_index, 1);
         assert_eq!(p.window_name, "nvim");
         assert_eq!(p.pid, 17559);
         assert_eq!(p.command, "claude-hl");
+        assert_eq!(p.title, "✳ Jev tooling");
         assert_eq!((p.cols, p.rows), (230, 60));
         assert!(p.active && p.attached && p.piped);
-        let unpiped = parse_line("%4\tmain\t2\tsh\t0\t1\tzsh\t\t80\t24\t/\t0\t0\t1\t0").unwrap();
+        let unpiped = parse_line(&join(&["%4", "main", "2", "sh", "0", "1", "zsh", "", "80", "24", "/", "0", "0", "1", "0"])).unwrap();
         assert!(!unpiped.piped);
         assert!(parse_line("garbage").is_none());
+        // What a client without a UTF-8 locale used to produce: tabs as underscores.
+        assert!(parse_line("%8_effective-tutorial_1_claude-hl_0_28706_claude-hl__ Multiple_115_55_/x_1_1_0_1").is_none());
+        assert_eq!(FORMAT.matches(SEP).count(), 14, "fifteen fields");
     }
 
     #[test]
@@ -650,8 +665,8 @@ mod tests {
         fs::write(dir.join("taps").join("99.raw"), b"litter").unwrap();
         let bus = Arc::new(BusSlot::default());
         let m = TapManager::new(bus, dir.clone());
-        let mut ours = parse_line("%7\tmain\t1\tw\t0\t1\tnode\t\t80\t24\t/\t0\t0\t1\t1").unwrap();
-        let theirs = parse_line("%8\tmain\t2\tw\t0\t1\tnode\t\t80\t24\t/\t0\t0\t1\t1").unwrap();
+        let mut ours = parse_line(&join(&["%7", "main", "1", "w", "0", "1", "node", "", "80", "24", "/", "0", "0", "1", "1"])).unwrap();
+        let theirs = parse_line(&join(&["%8", "main", "2", "w", "0", "1", "node", "", "80", "24", "/", "0", "0", "1", "1"])).unwrap();
         // `pipe_close` shells out to tmux; with no server it fails harmlessly.
         let cleaned = m.cleanup_stale(&[ours.clone(), theirs]);
         assert_eq!(cleaned, vec!["%7"]);

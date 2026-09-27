@@ -355,7 +355,7 @@ mod tests {
             assert_eq!(c.len(), 5);
             assert_eq!(q["level"]["type"], "choice");
         }
-        let pane = crate::tmux::parse_line("%1\tmain\t1\tweb\t0\t1\tnode\tt\t80\t24\t/x\t1\t1\t1\t0").unwrap();
+        let pane = crate::tmux::parse_line(&["%1", "main", "1", "web", "0", "1", "node", "t", "80", "24", "/x", "1", "1", "1", "0"].join(crate::tmux::SEP)).unwrap();
         let s = pane_state(&pane, "GET / 200\nError: boom");
         assert_eq!(s["process"]["foreground_command"], "node");
         assert_eq!(s["recent_output_last_lines"], "GET / 200\nError: boom");
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn a_shell_at_its_prompt_is_idle_before_jev_is_asked() {
-        let line = |cmd: &str| format!("%9\tpackages\t1\t[tmux]\t0\t1\t{cmd}\t\t115\t55\t/x\t0\t0\t1\t0");
+        let line = |cmd: &str| ["%9", "packages", "1", "[tmux]", "0", "1", cmd, "", "115", "55", "/x", "0", "0", "1", "0"].join(crate::tmux::SEP);
         let shell = crate::tmux::parse_line(&line("zsh")).unwrap();
         assert_eq!(pane_rule(&shell), Some(Level::Idle));
         let running = crate::tmux::parse_line(&line("node")).unwrap();
