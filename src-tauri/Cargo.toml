@@ -15,12 +15,14 @@ name = "watchglass_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+# Crates are held to the same minor as the npm packages; `tauri build`
+# refuses mismatched pairs. Bump both sides together.
+tauri-build = { version = "~2.6", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-tauri-plugin-notification = "2"
+tauri = { version = "~2.11", features = [] }
+tauri-plugin-opener = "~2.5"
+tauri-plugin-notification = "~2.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
