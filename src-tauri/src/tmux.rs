@@ -602,6 +602,14 @@ impl TapManager {
                 loop {
                     let panes = list_panes().unwrap_or_default();
                     if last.as_ref() != Some(&panes) {
+                        let before: Vec<&str> = last.as_deref().unwrap_or(&[]).iter().map(|p| p.id.as_str()).collect();
+                        let now: Vec<&str> = panes.iter().map(|p| p.id.as_str()).collect();
+                        if before != now {
+                            log(&format!(
+                                "panes: {}",
+                                panes.iter().map(|p| format!("{}={}:{}/{}", p.id, p.session, p.window_name, p.command)).collect::<Vec<_>>().join(" ")
+                            ));
+                        }
                         *cache.lock().expect("panes cache") = panes.clone();
                         let alive: std::collections::HashSet<&str> = panes.iter().map(|p| p.id.as_str()).collect();
                         let attached: Vec<String> = me.taps.lock().expect("taps lock").keys().cloned().collect();

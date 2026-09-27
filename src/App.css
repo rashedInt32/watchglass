@@ -181,6 +181,11 @@ pre {
   font-variant-numeric: tabular-nums;
 }
 
+.pill-sub {
+  color: var(--fg-faint);
+  margin-left: 2px;
+}
+
 .pill--attention {
   color: var(--lvl-attention);
   border-color: color-mix(in srgb, var(--lvl-attention) 40%, transparent);

@@ -2,6 +2,8 @@ import type { JevStatus } from "../lib/ipc";
 
 type Props = {
   panes: number;
+  /** Idle shells collapsed into the strip. */
+  idle: number;
   attention: number;
   failing: number;
   sortByPriority: boolean;
@@ -45,9 +47,10 @@ export function TopBar(p: Props) {
       </div>
 
       <div className="pills">
-        <span className="pill">
+        <span className="pill" title={p.idle > 0 ? `${p.idle} idle shell${p.idle === 1 ? "" : "s"} in the strip below` : undefined}>
           <i className={p.panes > 0 ? "dot dot--working" : "dot"} />
           {p.panes} pane{p.panes === 1 ? "" : "s"}
+          {p.idle > 0 && <span className="pill-sub">· {p.idle} idle</span>}
         </span>
         {p.attention > 0 && (
           <span className="pill pill--attention">

@@ -19,6 +19,8 @@ import type { TerminalLook } from "./lib/terminal";
 import { comparePriority, LEVEL_WORD, shouldNotify, tmuxOrder } from "./lib/verdict";
 
 const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+/** A newly seen pane stays a tile this long before it may collapse as an idle shell. */
+const NEW_PANE_GRACE_MS = 60_000;
 
 export default function App() {
   const [tmuxOk, setTmuxOk] = useState<TmuxStatus | null>(null);
@@ -37,6 +39,9 @@ export default function App() {
   const [newPane, setNewPane] = useState(false);
   /** Idle shells the user asked to see anyway. */
   const [pinned, setPinned] = useState<Set<string>>(new Set());
+  /** When each pane was first seen; new panes stay tiles for a while. */
+  const firstSeen = useRef(new Map<string, number>());
+  const [, bumpClock] = useState(0);
 
   const tiles = useRef(new Map<string, TileApi>());
   const latestError = useRef<{ id: string; marker: Marker } | null>(null);
@@ -108,11 +113,32 @@ export default function App() {
     })();
   }, [onVerdict]);
 
-  /** A shell sitting at its prompt with nothing to say, and no Claude in it. */
+  // Remember when each pane appeared, and re-evaluate the grid once the
+  // newest one is old enough to collapse.
+  useEffect(() => {
+    const now = Date.now();
+    const seen = firstSeen.current;
+    for (const p of panes) if (!seen.has(p.id)) seen.set(p.id, now);
+    for (const id of [...seen.keys()]) if (!panes.some((p) => p.id === id)) seen.delete(id);
+    const youngest = Math.max(0, ...panes.map((p) => seen.get(p.id) ?? 0));
+    const wait = NEW_PANE_GRACE_MS - (now - youngest) + 50;
+    if (wait > 0 && wait < NEW_PANE_GRACE_MS + 100) {
+      const t = setTimeout(() => bumpClock((n) => n + 1), wait);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [panes]);
+
+  /**
+   * A shell sitting at its prompt with nothing to say, and no Claude in it.
+   * A pane that just appeared is shown as a tile for a while first, so a
+   * new session is seen arriving instead of vanishing into the strip.
+   */
   const isIdleShell = useCallback(
     (p: PaneInfo): boolean => {
       if (pinned.has(p.id) || !SHELLS.has(p.command)) return false;
       if (sessionsRef.current.some((s) => s.paneId === p.id)) return false;
+      if (Date.now() - (firstSeen.current.get(p.id) ?? 0) < NEW_PANE_GRACE_MS) return false;
       const level = paneVerdict(p.id)?.level;
       return level === undefined || level === "idle";
     },
@@ -286,6 +312,7 @@ export default function App() {
     <div className="app" style={rootStyle}>
       <TopBar
         panes={panes.length}
+        idle={collapsed.length}
         attention={counts.attention}
         failing={counts.failing}
         sortByPriority={sortByPriority}
