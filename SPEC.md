@@ -113,12 +113,15 @@ One Jev Choice per subject with five levels, in priority order:
 Colour ladder: attention red with a pulse, failing orange, warning amber,
 working green, idle grey. Tile headers tint with their level. Priority
 order sorts loudest first; tmux order is the alternative, toggled with `s`.
+Every pane is a tile until the user hides it (`h`); hidden panes sit in a
+strip under the grid and come back on click. The app never hides a pane
+on its own.
 Notifications fire only when a subject rises into failing or attention and
 its tile is not the active visible one, rate limited per subject.
 
 Keys: ⌘J newest error line, ⌘K search, ⌘1…9 focus a tile, Enter/Esc focus
 mode, j/k active tile, n/p markers, f follow, g go to the pane in tmux,
-i one-line input, ⇧N new pane, s order, ? keys.
+h hide the pane, i one-line input, ⇧N new pane, s order, ? keys.
 
 ### 5.6 Actions, not a terminal
 

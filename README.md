@@ -48,6 +48,7 @@ tiles use its font and theme.
 | n / p | next / previous marker in the active tile |
 | f | back to live, or pause following |
 | g | go to the active pane in tmux |
+| h | hide the active pane; bring it back from the strip |
 | i | type one line into the active pane |
 | ⇧N | new pane: run a command in a new tmux window |
 | s | toggle priority order |
@@ -78,8 +79,9 @@ instead, all of them `tmux send-keys` underneath:
   Verdicts are appended to `verdicts.log` in the app data directory.
 - A session waiting for permission gets Approve and Reject buttons in the
   sidebar. They send `1` or `Esc` to its pane, the menu keys Claude expects.
-- Idle shells collapse into a strip under the grid. Click one to show it; a
-  shell that starts a command comes back on its own.
+- Every pane shows by default. Hide one with `h` or the `–` in its header;
+  it moves to a strip under the grid, and a click brings it back. Nothing
+  hides on its own, and the choice is remembered.
 - Tap files rotate at 4 MB, and a restart closes pipes a crash left behind.
 
 ## UI work without the Rust side

@@ -5,14 +5,14 @@ type Props = {
   onExpand: (id: string) => void;
 };
 
-/** Idle shells, collapsed to chips so the grid keeps its room for real work. */
+/** Panes the user hid, as chips; click one to bring it back to the grid. */
 export function IdleStrip({ panes, onExpand }: Props) {
   if (panes.length === 0) return null;
   return (
     <footer className="strip">
-      <span className="strip-label">idle shells</span>
+      <span className="strip-label">hidden</span>
       {panes.map((p) => (
-        <button key={p.id} className="chip" onClick={() => onExpand(p.id)} title={`${p.cwd} · click to show`}>
+        <button key={p.id} className="chip" onClick={() => onExpand(p.id)} title={`${p.cwd} · click to show again`}>
           <i className="dot dot--idle" />
           {p.session}:{p.windowName}
           {p.paneIndex > 0 ? `.${p.paneIndex}` : ""}

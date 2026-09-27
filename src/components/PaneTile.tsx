@@ -46,6 +46,8 @@ type Props = {
   hiddenByFocus: boolean;
   onMarker: (id: string, marker: Marker) => void;
   onSelect: () => void;
+  /** Move this pane to the hidden strip. Only the user does this. */
+  onHide: () => void;
 };
 
 function GoIcon() {
@@ -57,7 +59,7 @@ function GoIcon() {
 }
 
 export const PaneTile = forwardRef<TileApi, Props>(function PaneTile(props, ref) {
-  const { pane, claude, verdict, look, index, unread, active, focused, hiddenByFocus, onMarker, onSelect } = props;
+  const { pane, claude, verdict, look, index, unread, active, focused, hiddenByFocus, onMarker, onSelect, onHide } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -345,6 +347,9 @@ export const PaneTile = forwardRef<TileApi, Props>(function PaneTile(props, ref)
         </button>
         <button className="tile-btn" title="Go to this pane in tmux (g)" onClick={() => void backend.focusPane(pane.id)}>
           <GoIcon />
+        </button>
+        <button className="tile-btn tile-btn--text" title="Hide this pane (h); bring it back from the strip below" onClick={onHide}>
+          –
         </button>
       </header>
       {input !== null && (

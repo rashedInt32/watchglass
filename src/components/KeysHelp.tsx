@@ -7,6 +7,7 @@ const KEYS: [string, string][] = [
   ["n / p", "Next / previous marker in the active tile"],
   ["f", "Back to live, or pause following"],
   ["g", "Go to the active pane in tmux"],
+  ["h", "Hide the active pane; bring it back from the strip"],
   ["i", "Type one line into the active pane"],
   ["⇧N", "New pane: run a command in a new tmux window"],
   ["s", "Toggle priority order"],

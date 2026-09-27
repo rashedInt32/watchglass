@@ -13,14 +13,26 @@ import { chromeVars, defaultFontSize, fontFamilyCss, toTerminalTheme, type Appea
 import { backend } from "./lib/backend";
 import { publish } from "./lib/bus";
 import type { Marker } from "./lib/detect";
-import { SHELLS, type ClaudeSession, type JevStatus, type PaneInfo, type TmuxStatus, type VerdictMsg } from "./lib/ipc";
+import type { ClaudeSession, JevStatus, PaneInfo, TmuxStatus, VerdictMsg } from "./lib/ipc";
 import { notify } from "./lib/notify";
 import type { TerminalLook } from "./lib/terminal";
 import { comparePriority, LEVEL_WORD, shouldNotify, tmuxOrder } from "./lib/verdict";
 
 const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
-/** A newly seen pane stays a tile this long before it may collapse as an idle shell. */
-const NEW_PANE_GRACE_MS = 60_000;
+
+/** Stable enough across tmux restarts to remember a hidden pane. */
+export function paneKey(p: PaneInfo): string {
+  return `${p.session}:${p.windowIndex}.${p.paneIndex}`;
+}
+
+function loadHidden(): Set<string> {
+  try {
+    const raw = localStorage.getItem("wg.hidden");
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
 
 export default function App() {
   const [tmuxOk, setTmuxOk] = useState<TmuxStatus | null>(null);
@@ -37,11 +49,12 @@ export default function App() {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [newPane, setNewPane] = useState(false);
-  /** Idle shells the user asked to see anyway. */
-  const [pinned, setPinned] = useState<Set<string>>(new Set());
-  /** When each pane was first seen; new panes stay tiles for a while. */
-  const firstSeen = useRef(new Map<string, number>());
-  const [, bumpClock] = useState(0);
+  /** Panes the user hid, by session:window.pane. Nothing hides on its own. */
+  const [hidden, setHidden] = useState<Set<string>>(loadHidden);
+  const setHiddenPersist = useCallback((next: Set<string>) => {
+    setHidden(next);
+    localStorage.setItem("wg.hidden", JSON.stringify([...next]));
+  }, []);
 
   const tiles = useRef(new Map<string, TileApi>());
   const latestError = useRef<{ id: string; marker: Marker } | null>(null);
@@ -113,47 +126,35 @@ export default function App() {
     })();
   }, [onVerdict]);
 
-  // Remember when each pane appeared, and re-evaluate the grid once the
-  // newest one is old enough to collapse.
-  useEffect(() => {
-    const now = Date.now();
-    const seen = firstSeen.current;
-    for (const p of panes) if (!seen.has(p.id)) seen.set(p.id, now);
-    for (const id of [...seen.keys()]) if (!panes.some((p) => p.id === id)) seen.delete(id);
-    const youngest = Math.max(0, ...panes.map((p) => seen.get(p.id) ?? 0));
-    const wait = NEW_PANE_GRACE_MS - (now - youngest) + 50;
-    if (wait > 0 && wait < NEW_PANE_GRACE_MS + 100) {
-      const t = setTimeout(() => bumpClock((n) => n + 1), wait);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [panes]);
-
-  /**
-   * A shell sitting at its prompt with nothing to say, and no Claude in it.
-   * A pane that just appeared is shown as a tile for a while first, so a
-   * new session is seen arriving instead of vanishing into the strip.
-   */
-  const isIdleShell = useCallback(
-    (p: PaneInfo): boolean => {
-      if (pinned.has(p.id) || !SHELLS.has(p.command)) return false;
-      if (sessionsRef.current.some((s) => s.paneId === p.id)) return false;
-      if (Date.now() - (firstSeen.current.get(p.id) ?? 0) < NEW_PANE_GRACE_MS) return false;
-      const level = paneVerdict(p.id)?.level;
-      return level === undefined || level === "idle";
-    },
-    [paneVerdict, pinned],
-  );
-
   const { ordered, collapsed } = useMemo(() => {
     const list = [...panes].sort(tmuxOrder);
-    const shown = list.filter((p) => !isIdleShell(p));
-    const hidden = list.filter((p) => isIdleShell(p));
+    const shown = list.filter((p) => !hidden.has(paneKey(p)));
+    const away = list.filter((p) => hidden.has(paneKey(p)));
     if (sortByPriority) shown.sort((a, b) => comparePriority(paneVerdict(a.id)?.level, paneVerdict(b.id)?.level));
-    return { ordered: shown, collapsed: hidden };
+    return { ordered: shown, collapsed: away };
     // verdicts is a dependency through paneVerdict's refs; re-sort when it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panes, sortByPriority, verdicts, sessions, isIdleShell]);
+  }, [panes, sortByPriority, verdicts, sessions, hidden]);
+
+  const hidePane = useCallback(
+    (id: string) => {
+      const p = panesRef.current.find((x) => x.id === id);
+      if (!p) return;
+      setHiddenPersist(new Set(hidden).add(paneKey(p)));
+    },
+    [hidden, setHiddenPersist],
+  );
+
+  const showPane = useCallback(
+    (id: string) => {
+      const p = panesRef.current.find((x) => x.id === id);
+      if (!p) return;
+      const next = new Set(hidden);
+      next.delete(paneKey(p));
+      setHiddenPersist(next);
+    },
+    [hidden, setHiddenPersist],
+  );
 
   const select = useCallback((id: string | null, focus?: boolean) => {
     setActiveId(id);
@@ -194,6 +195,8 @@ export default function App() {
 
   const orderedRef = useRef(ordered);
   orderedRef.current = ordered;
+  const hideRef = useRef(hidePane);
+  hideRef.current = hidePane;
 
   useEffect(() => {
     function activeTile(): TileApi | undefined {
@@ -255,6 +258,9 @@ export default function App() {
         case "g":
           if (activeRef.current) void backend.focusPane(activeRef.current);
           break;
+        case "h":
+          if (activeRef.current) hideRef.current(activeRef.current);
+          break;
         case "s":
           setSortByPriority((on) => {
             localStorage.setItem("wg.sort", on ? "tmux" : "priority");
@@ -312,7 +318,7 @@ export default function App() {
     <div className="app" style={rootStyle}>
       <TopBar
         panes={panes.length}
-        idle={collapsed.length}
+        hidden={collapsed.length}
         attention={counts.attention}
         failing={counts.failing}
         sortByPriority={sortByPriority}
@@ -362,13 +368,12 @@ export default function App() {
                 hiddenByFocus={focusMode && p.id !== activeId}
                 onMarker={onMarker}
                 onSelect={() => select(p.id)}
+                onHide={() => hidePane(p.id)}
               />
             ))}
           </main>
         )}
-        {ready && !focusMode && (
-          <IdleStrip panes={collapsed} onExpand={(id) => setPinned((s) => new Set(s).add(id))} />
-        )}
+        {ready && !focusMode && <IdleStrip panes={collapsed} onExpand={showPane} />}
         </div>
       </div>
       {palette && (
@@ -381,7 +386,6 @@ export default function App() {
           sessions={[...new Set(panes.map((p) => p.session))]}
           onCreate={async (session, name, command) => {
             const id = await backend.newWindow(session, name, command);
-            setPinned((s) => new Set(s).add(id));
             select(id);
           }}
           onClose={() => setNewPane(false)}
