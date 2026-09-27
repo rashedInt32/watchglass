@@ -335,29 +335,6 @@ pre {
 
 /* ── Typing without becoming a terminal ─────────────────────────────── */
 
-.reply {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.reply-input {
-  flex: 1;
-  min-width: 0;
-  height: 26px;
-  padding: 0 9px;
-  border-radius: 7px;
-  border: 1px solid var(--line);
-  background: var(--bg-2);
-  color: var(--fg);
-  font: 12px var(--sans);
-  outline: none;
-}
-
-.reply-input:focus {
-  border-color: var(--accent);
-}
-
 .tile-btn--text {
   width: auto;
   padding: 0 6px;

@@ -69,6 +69,11 @@ fn tmux_available() -> bool {
 }
 
 #[tauri::command]
+fn tmux_status() -> tmux::TmuxStatus {
+    tmux::status()
+}
+
+#[tauri::command]
 fn list_panes() -> Result<Vec<PaneInfo>, String> {
     tmux::list_panes()
 }
@@ -171,6 +176,8 @@ pub fn run() {
             let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("watchglass"));
             let bus = Arc::new(BusSlot::default());
             let _ = std::fs::create_dir_all(&data_dir);
+            tmux::set_log_path(data_dir.join("watchglass.log"));
+            tmux::log(&format!("start {} pid {}", env!("CARGO_PKG_VERSION"), std::process::id()));
             let taps = Arc::new(TapManager::new(Arc::clone(&bus), data_dir.clone()));
             let classifier = Classifier::start(Arc::clone(&bus), Some(data_dir.join("verdicts.log")));
             let panes: Arc<Mutex<Vec<PaneInfo>>> = Arc::new(Mutex::new(Vec::new()));
@@ -233,6 +240,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             subscribe,
             tmux_available,
+            tmux_status,
             list_panes,
             attach_pane,
             detach_pane,

@@ -54,6 +54,8 @@ export type AttachInfo = { id: string; cols: number; rows: number; snapshot: str
 
 export type JevStatus = { enabled: boolean; reason: string };
 
+export type TmuxStatus = { available: boolean; path: string; socket: string; error: string | null };
+
 export const inTauri = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -77,6 +79,7 @@ export async function subscribe(s: Subscriber): Promise<void> {
 }
 
 export const tmuxAvailable = () => invoke<boolean>("tmux_available");
+export const tmuxStatus = () => invoke<TmuxStatus>("tmux_status");
 export const listPanes = () => invoke<PaneInfo[]>("list_panes");
 export const attachPane = (id: string) => invoke<AttachInfo>("attach_pane", { id });
 export const detachPane = (id: string) => invoke<boolean>("detach_pane", { id });

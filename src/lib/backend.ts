@@ -9,6 +9,7 @@ export type Backend = {
   kind: "tauri" | "mock";
   subscribe: typeof ipc.subscribe;
   tmuxAvailable: typeof ipc.tmuxAvailable;
+  tmuxStatus: typeof ipc.tmuxStatus;
   attachPane: typeof ipc.attachPane;
   detachPane: typeof ipc.detachPane;
   focusPane: typeof ipc.focusPane;
@@ -23,6 +24,7 @@ const tauriBackend: Backend = {
   kind: "tauri",
   subscribe: ipc.subscribe,
   tmuxAvailable: ipc.tmuxAvailable,
+  tmuxStatus: ipc.tmuxStatus,
   attachPane: ipc.attachPane,
   detachPane: ipc.detachPane,
   focusPane: ipc.focusPane,

@@ -241,6 +241,9 @@ export function createMockBackend(): Backend {
     async tmuxAvailable() {
       return true;
     },
+    async tmuxStatus() {
+      return { available: true, path: "/opt/homebrew/bin/tmux", socket: "/tmp/tmux-501/default", error: null };
+    },
     async attachPane(id) {
       const p = PANES.find((x) => x.id === id);
       if (!p) throw new Error(`no pane ${id}`);

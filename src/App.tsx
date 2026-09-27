@@ -13,7 +13,7 @@ import { chromeVars, defaultFontSize, fontFamilyCss, toTerminalTheme, type Appea
 import { backend } from "./lib/backend";
 import { publish } from "./lib/bus";
 import type { Marker } from "./lib/detect";
-import { SHELLS, type ClaudeSession, type JevStatus, type PaneInfo, type VerdictMsg } from "./lib/ipc";
+import { SHELLS, type ClaudeSession, type JevStatus, type PaneInfo, type TmuxStatus, type VerdictMsg } from "./lib/ipc";
 import { notify } from "./lib/notify";
 import type { TerminalLook } from "./lib/terminal";
 import { comparePriority, LEVEL_WORD, shouldNotify, tmuxOrder } from "./lib/verdict";
@@ -21,7 +21,7 @@ import { comparePriority, LEVEL_WORD, shouldNotify, tmuxOrder } from "./lib/verd
 const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
 export default function App() {
-  const [tmuxOk, setTmuxOk] = useState<boolean | null>(null);
+  const [tmuxOk, setTmuxOk] = useState<TmuxStatus | null>(null);
   const [panes, setPanes] = useState<PaneInfo[]>([]);
   const [sessions, setSessions] = useState<ClaudeSession[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictMsg>>({});
@@ -89,7 +89,11 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
-      setTmuxOk(await backend.tmuxAvailable().catch(() => false));
+      setTmuxOk(
+        await backend
+          .tmuxStatus()
+          .catch((e) => ({ available: false, path: "?", socket: "?", error: String(e) })),
+      );
       setJev(await backend.jevStatus().catch(() => ({ enabled: false, reason: "unavailable" })));
       const a = await backend.ghosttyAppearance().catch(() => null);
       setAppearance(a);
@@ -100,7 +104,7 @@ export default function App() {
           onClaude: (list) => setSessions(list),
           onVerdict,
         })
-        .catch(() => setTmuxOk(false));
+        .catch((e) => setTmuxOk({ available: false, path: "?", socket: "?", error: String(e) }));
     })();
   }, [onVerdict]);
 
@@ -307,9 +311,6 @@ export default function App() {
           }}
           onAnswer={(s, answer) => {
             if (s.paneId) void backend.sendKeys(s.paneId, [answer === "approve" ? "1" : "Escape"]);
-          }}
-          onReply={(s, text) => {
-            if (s.paneId) void backend.sendLine(s.paneId, text);
           }}
         />
         <div className="main">

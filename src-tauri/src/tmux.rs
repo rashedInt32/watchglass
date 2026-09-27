@@ -71,11 +71,43 @@ pub fn tmux_path() -> &'static Path {
     })
 }
 
-fn tmux(args: &[&str]) -> Result<Vec<u8>, String> {
-    let out = Command::new(tmux_path())
-        .args(args)
-        .output()
-        .map_err(|e| format!("tmux: {e}"))?;
+/// Where diagnostics go; set once at startup. GUI apps have no stderr.
+static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn set_log_path(path: PathBuf) {
+    let _ = LOG_PATH.set(path);
+}
+
+pub fn log(line: &str) {
+    eprintln!("watchglass: {line}");
+    if let Some(p) = LOG_PATH.get() {
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(p) {
+            use std::io::Write;
+            let _ = writeln!(f, "{} {line}", now_ms());
+        }
+    }
+}
+
+/// The tmux socket to talk to. A Finder-launched app has no `TMUX`
+/// variable, so the default socket is tried first, then any other live
+/// socket in tmux's directory.
+static SOCKET: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+fn socket_dir() -> PathBuf {
+    let base = std::env::var_os("TMUX_TMPDIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
+    #[cfg(unix)]
+    let uid = unsafe { libc::getuid() };
+    #[cfg(not(unix))]
+    let uid = 0;
+    base.join(format!("tmux-{uid}"))
+}
+
+fn raw(args: &[&str], socket: Option<&Path>) -> Result<Vec<u8>, String> {
+    let mut cmd = Command::new(tmux_path());
+    if let Some(s) = socket {
+        cmd.arg("-S").arg(s);
+    }
+    let out = cmd.args(args).output().map_err(|e| format!("tmux ({}): {e}", tmux_path().display()))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
         return Err(if err.is_empty() { format!("tmux {} failed", args.join(" ")) } else { err });
@@ -83,13 +115,75 @@ fn tmux(args: &[&str]) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
+fn resolve_socket() -> Option<PathBuf> {
+    // Inside tmux, the client already knows its socket from `TMUX`.
+    if std::env::var_os("TMUX").is_some() && raw(&["list-sessions"], None).is_ok() {
+        return None;
+    }
+    let dir = socket_dir();
+    let default = dir.join("default");
+    if raw(&["list-sessions"], Some(&default)).is_ok() {
+        return Some(default);
+    }
+    let mut others: Vec<PathBuf> = fs::read_dir(&dir)
+        .map(|it| it.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p != &default).collect())
+        .unwrap_or_default();
+    others.sort();
+    others.into_iter().find(|s| raw(&["list-sessions"], Some(s)).is_ok())
+}
+
+fn socket() -> Option<&'static Path> {
+    SOCKET
+        .get_or_init(|| {
+            let s = resolve_socket();
+            log(&format!(
+                "tmux at {} socket {}",
+                tmux_path().display(),
+                s.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "(from TMUX env)".into())
+            ));
+            s
+        })
+        .as_deref()
+}
+
+fn tmux(args: &[&str]) -> Result<Vec<u8>, String> {
+    raw(args, socket())
+}
+
 pub fn available() -> bool {
     tmux(&["list-sessions"]).is_ok()
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TmuxStatus {
+    pub available: bool,
+    pub path: String,
+    pub socket: String,
+    pub error: Option<String>,
+}
+
+pub fn status() -> TmuxStatus {
+    let error = tmux(&["list-sessions"]).err();
+    TmuxStatus {
+        available: error.is_none(),
+        path: tmux_path().display().to_string(),
+        socket: socket().map(|p| p.display().to_string()).unwrap_or_else(|| "TMUX env".into()),
+        error,
+    }
+}
+
 pub fn list_panes() -> Result<Vec<PaneInfo>, String> {
-    let out = tmux(&["list-panes", "-a", "-F", FORMAT])?;
-    Ok(String::from_utf8_lossy(&out).lines().filter_map(parse_line).collect())
+    let out = tmux(&["list-panes", "-a", "-F", FORMAT]).map_err(|e| {
+        log(&format!("list-panes failed: {e}"));
+        e
+    })?;
+    let text = String::from_utf8_lossy(&out);
+    let panes: Vec<PaneInfo> = text.lines().filter_map(parse_line).collect();
+    if panes.is_empty() && !text.trim().is_empty() {
+        log(&format!("list-panes returned {} lines but none parsed; first: {:?}", text.lines().count(), text.lines().next().unwrap_or("")));
+    }
+    Ok(panes)
 }
 
 pub fn parse_line(line: &str) -> Option<PaneInfo> {

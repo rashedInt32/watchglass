@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { ClaudeSession, VerdictMsg } from "../lib/ipc";
 import { comparePriority, describe, LEVEL_WORD } from "../lib/verdict";
 
@@ -10,44 +9,7 @@ type Props = {
   onGo: (session: ClaudeSession) => void;
   /** Answer a permission prompt: "1" approves, Esc rejects, as Claude's menu expects. */
   onAnswer: (session: ClaudeSession, answer: "approve" | "reject") => void;
-  /** Type a reply into the session's pane and press Enter. */
-  onReply: (session: ClaudeSession, text: string) => void;
 };
-
-function ReplyBox({ session, onReply }: { session: ClaudeSession; onReply: Props["onReply"] }) {
-  const [text, setText] = useState("");
-  const send = () => {
-    const t = text.trim();
-    if (!t) return;
-    onReply(session, t);
-    setText("");
-    // Give the keyboard back to the app so shortcuts work right after a reply.
-    (document.activeElement as HTMLElement | null)?.blur();
-  };
-  return (
-    <div className="reply" onClick={(e) => e.stopPropagation()}>
-      <input
-        className="reply-input"
-        placeholder="Reply to Claude…"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            send();
-          } else if (e.key === "Escape") {
-            (e.target as HTMLInputElement).blur();
-          }
-          e.stopPropagation();
-        }}
-        spellCheck={false}
-      />
-      <button className="btn btn--small" disabled={!text.trim()} onClick={send} title="Send (Enter)">
-        Send
-      </button>
-    </div>
-  );
-}
 
 function age(ms: number): string {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -62,7 +24,7 @@ function basename(path: string): string {
   return clean.split("/").pop() || clean;
 }
 
-export function ClaudePane({ sessions, verdicts, activePaneId, onSelect, onGo, onAnswer, onReply }: Props) {
+export function ClaudePane({ sessions, verdicts, activePaneId, onSelect, onGo, onAnswer }: Props) {
   const rows = [...sessions].sort(
     (a, b) => comparePriority(verdicts[a.sessionId]?.level, verdicts[b.sessionId]?.level) || b.updatedAt - a.updatedAt,
   );
@@ -138,7 +100,6 @@ export function ClaudePane({ sessions, verdicts, activePaneId, onSelect, onGo, o
                   <span className="claude-actions-hint">waiting for permission</span>
                 </div>
               )}
-              {s.paneId && s.status !== "waiting" && <ReplyBox session={s} onReply={onReply} />}
             </li>
           );
         })}
