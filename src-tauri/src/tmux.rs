@@ -180,11 +180,27 @@ pub fn status() -> TmuxStatus {
     }
 }
 
+/// The last `list-panes` failure, so a server that is down for an hour
+/// costs one log line, not one every poll.
+static LIST_ERR: Mutex<Option<String>> = Mutex::new(None);
+
 pub fn list_panes() -> Result<Vec<PaneInfo>, String> {
-    let out = tmux(&["list-panes", "-a", "-F", FORMAT]).map_err(|e| {
-        log(&format!("list-panes failed: {e}"));
-        e
-    })?;
+    let out = match tmux(&["list-panes", "-a", "-F", FORMAT]) {
+        Ok(out) => {
+            if LIST_ERR.lock().expect("list err").take().is_some() {
+                log("list-panes ok again");
+            }
+            out
+        }
+        Err(e) => {
+            let mut last = LIST_ERR.lock().expect("list err");
+            if last.as_deref() != Some(e.as_str()) {
+                log(&format!("list-panes failed: {e}"));
+                *last = Some(e.clone());
+            }
+            return Err(e);
+        }
+    };
     let text = String::from_utf8_lossy(&out);
     let panes: Vec<PaneInfo> = text.lines().filter_map(parse_line).collect();
     if panes.is_empty() && !text.trim().is_empty() {
@@ -537,6 +553,10 @@ impl TapManager {
                 }
             })
             .map_err(|e| format!("thread: {e}"))?;
+        // Judge the pane on what it already shows; the tap only carries new output.
+        if let Some(h) = HOOK.get() {
+            h(&pane.id);
+        }
         Ok(AttachInfo {
             id: pane.id.clone(),
             cols: pane.cols,
@@ -591,8 +611,9 @@ impl TapManager {
         cleaned
     }
 
-    /// Emits the pane list whenever it changes, keeps `cache` current, and
-    /// detaches vanished panes.
+    /// Emits the pane list whenever it changes, keeps `cache` current, taps
+    /// every pane so judgment runs with no window open, and detaches panes
+    /// that vanished.
     pub fn start_poller(self: &Arc<Self>, cache: Arc<Mutex<Vec<PaneInfo>>>) {
         let me = Arc::clone(self);
         thread::Builder::new()
@@ -616,6 +637,13 @@ impl TapManager {
                         for id in attached {
                             if !alive.contains(id.as_str()) {
                                 me.detach(&id);
+                            }
+                        }
+                        for pane in &panes {
+                            if !me.is_attached(&pane.id) {
+                                if let Err(e) = me.attach(pane) {
+                                    log(&format!("attach {} failed: {e}", pane.id));
+                                }
                             }
                         }
                         me.bus.panes(panes.clone());

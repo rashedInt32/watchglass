@@ -14,9 +14,8 @@ import { backend } from "./lib/backend";
 import { publish } from "./lib/bus";
 import type { Marker } from "./lib/detect";
 import type { ClaudeSession, JevStatus, PaneInfo, TmuxStatus, VerdictMsg } from "./lib/ipc";
-import { notify } from "./lib/notify";
 import type { TerminalLook } from "./lib/terminal";
-import { comparePriority, LEVEL_WORD, shouldNotify, tmuxOrder } from "./lib/verdict";
+import { comparePriority, tmuxOrder } from "./lib/verdict";
 
 const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
 
@@ -86,23 +85,9 @@ export default function App() {
     [],
   );
 
+  // Notifications come from the service in Rust, so they fire with no window open.
   const onVerdict = useCallback((v: VerdictMsg) => {
-    const prev = verdictsRef.current[v.id]?.level;
     setVerdicts((old) => ({ ...old, [v.id]: v }));
-    if (!shouldNotify(prev, v.level)) return;
-    const paneId = v.kind === "pane" ? v.id : sessionsRef.current.find((s) => s.sessionId === v.id)?.paneId ?? null;
-    const isActive = paneId !== null && paneId === activeRef.current;
-    const hidden = focusRef.current && !isActive;
-    if (isActive && !hidden && document.hasFocus()) return;
-    const pane = panesRef.current.find((p) => p.id === paneId);
-    const session = v.kind === "claude" ? sessionsRef.current.find((s) => s.sessionId === v.id) : undefined;
-    const title = session
-      ? `Claude · ${session.cwd.split("/").pop()} · ${LEVEL_WORD[v.level]}`
-      : pane
-        ? `${pane.session}:${pane.windowName} · ${LEVEL_WORD[v.level]}`
-        : `watchglass · ${LEVEL_WORD[v.level]}`;
-    const body = session?.lastText ?? pane?.title ?? "";
-    void notify(v.id, title, body);
   }, []);
 
   useEffect(() => {

@@ -17,6 +17,10 @@ export type Backend = {
   sendLine: typeof ipc.sendLine;
   newWindow: typeof ipc.newWindow;
   jevStatus: typeof ipc.jevStatus;
+  subscribeSummary: typeof ipc.subscribeSummary;
+  openMain: typeof ipc.openMain;
+  hidePanel: typeof ipc.hidePanel;
+  verdictsPath: typeof ipc.verdictsPath;
   ghosttyAppearance(): Promise<Appearance>;
 };
 
@@ -32,6 +36,10 @@ const tauriBackend: Backend = {
   sendLine: ipc.sendLine,
   newWindow: ipc.newWindow,
   jevStatus: ipc.jevStatus,
+  subscribeSummary: ipc.subscribeSummary,
+  openMain: ipc.openMain,
+  hidePanel: ipc.hidePanel,
+  verdictsPath: ipc.verdictsPath,
   ghosttyAppearance: () => invoke<Appearance>("ghostty_appearance"),
 };
 

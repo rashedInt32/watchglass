@@ -56,6 +56,45 @@ export type JevStatus = { enabled: boolean; reason: string };
 
 export type TmuxStatus = { available: boolean; path: string; socket: string; error: string | null };
 
+/** One Claude session as the service sees it; `level` is Jev's or the rule's. */
+export type SessionRow = {
+  sessionId: string;
+  name: string;
+  cwd: string;
+  status: string;
+  tmux: string | null;
+  paneId: string | null;
+  level: Level;
+  confidence: number;
+  source: "jev" | "rule" | "none";
+  snippet: string;
+  updatedAt: number;
+};
+
+export type PaneRow = {
+  id: string;
+  session: string;
+  windowIndex: number;
+  windowName: string;
+  paneIndex: number;
+  command: string;
+  title: string;
+  cwd: string;
+  level: Level;
+  confidence: number;
+  source: "jev" | "rule" | "none";
+  snippet: string;
+};
+
+/** The whole picture, sorted by priority; also what `verdicts.json` holds. */
+export type Summary = {
+  updatedAt: number;
+  top: Level;
+  counts: Partial<Record<Level, number>>;
+  sessions: SessionRow[];
+  panes: PaneRow[];
+};
+
 export const inTauri = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -78,6 +117,17 @@ export async function subscribe(s: Subscriber): Promise<void> {
   await invoke("subscribe", { onChunk, onPanes, onClaude, onVerdict });
 }
 
+/** The panel's feed: the current summary at once, then every change. */
+export async function subscribeSummary(onSummary: (s: Summary) => void): Promise<void> {
+  const ch = new Channel<Summary>();
+  ch.onmessage = onSummary;
+  await invoke("subscribe_summary", { onSummary: ch });
+}
+
+export const summary = () => invoke<Summary>("summary");
+export const openMain = () => invoke<void>("open_main");
+export const hidePanel = () => invoke<void>("hide_panel");
+export const verdictsPath = () => invoke<string>("verdicts_path");
 export const tmuxAvailable = () => invoke<boolean>("tmux_available");
 export const tmuxStatus = () => invoke<TmuxStatus>("tmux_status");
 export const listPanes = () => invoke<PaneInfo[]>("list_panes");

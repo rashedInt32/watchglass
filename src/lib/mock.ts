@@ -3,7 +3,8 @@
 // endings and ANSI colour.
 import type { Appearance } from "./appearance";
 import type { Backend } from "./backend";
-import type { ChunkMsg, ClaudeSession, Level, PaneInfo, Subscriber, VerdictMsg } from "./ipc";
+import type { ChunkMsg, ClaudeSession, Level, PaneInfo, Subscriber, Summary, VerdictMsg } from "./ipc";
+import { rank } from "./verdict";
 
 const MOCK_APPEARANCE: Appearance = {
   fontFamily: ["JetBrains Mono Nerd Font", "JetBrains Mono"],
@@ -201,12 +202,54 @@ const VERDICT_CYCLE: Record<string, Level[]> = {
   "%8": ["idle"],
 };
 
+const SNIPPETS: Record<string, string> = {
+  "%1": "GET /dashboard 500 in 91ms",
+  "%2": "FAIL Tests failed. Watching for file changes...",
+  "%3": "Found 1 error. Watching for file changes.",
+  "%4": '{"level":"warn","msg":"retrying redis in 2s"}',
+  "%7": "➜  ~/code git:(main)",
+  "%8": "➜  ~/code git:(main)",
+};
+
 export function createMockBackend(): Backend {
   let sub: Subscriber | null = null;
+  let summarySub: ((s: Summary) => void) | null = null;
   const stops = new Map<string, () => void>();
   const seqs = new Map<string, number>();
   const cycles = new Map<string, number>();
+  const verdicts = new Map<string, VerdictMsg>();
   let verdictTimer = 0;
+
+  const buildSummary = (): Summary => {
+    const sessions = SESSIONS.map((s) => {
+      const v = verdicts.get(s.sessionId);
+      return {
+        sessionId: s.sessionId, name: s.name, cwd: s.cwd, status: s.status, tmux: s.tmux, paneId: s.paneId,
+        level: v?.level ?? "idle", confidence: v?.confidence ?? 0, source: v?.source ?? "none",
+        snippet: s.lastText ?? "", updatedAt: s.updatedAt,
+      } as const;
+    }).sort((a, b) => rank(b.level) - rank(a.level) || b.updatedAt - a.updatedAt);
+    const owned = new Map(SESSIONS.filter((s) => s.paneId).map((s) => [s.paneId!, s.sessionId]));
+    const panes = PANES.map((p) => {
+      const v = verdicts.get(owned.get(p.id) ?? p.id) ?? verdicts.get(p.id);
+      return {
+        id: p.id, session: p.session, windowIndex: p.windowIndex, windowName: p.windowName, paneIndex: p.paneIndex,
+        command: p.command, title: p.title, cwd: p.cwd, level: v?.level ?? "idle", confidence: v?.confidence ?? 0,
+        source: v?.source ?? "none", snippet: SNIPPETS[p.id] ?? p.title,
+      } as const;
+    }).sort((a, b) => rank(b.level) - rank(a.level) || a.session.localeCompare(b.session));
+    const counts: Partial<Record<Level, number>> = {};
+    let top: Level = "idle";
+    for (const r of [...sessions, ...panes.filter((p) => !owned.has(p.id))]) {
+      counts[r.level] = (counts[r.level] ?? 0) + 1;
+      if (rank(r.level) > rank(top)) top = r.level;
+    }
+    return { updatedAt: Date.now(), top, counts, sessions, panes };
+  };
+  const pushVerdict = (v: VerdictMsg) => {
+    verdicts.set(v.id, v);
+    sub?.onVerdict(v);
+  };
 
   const emit = (id: string, text: string) => {
     const seq = (seqs.get(id) ?? 0) + 1;
@@ -225,18 +268,43 @@ export function createMockBackend(): Backend {
       setTimeout(() => {
         s.onPanes(PANES);
         s.onClaude(SESSIONS);
-        s.onVerdict(verdict("aaaa-1", "claude", "attention"));
-        s.onVerdict(verdict("bbbb-2", "claude", "working", "rule"));
-        s.onVerdict(verdict("cccc-3", "claude", "attention", "rule"));
+        pushVerdict(verdict("aaaa-1", "claude", "attention"));
+        pushVerdict(verdict("bbbb-2", "claude", "working", "rule"));
+        pushVerdict(verdict("cccc-3", "claude", "attention", "rule"));
+        summarySub?.(buildSummary());
       }, 50);
       clearInterval(verdictTimer);
       verdictTimer = window.setInterval(() => {
         for (const [id, levels] of Object.entries(VERDICT_CYCLE)) {
           const n = (cycles.get(id) ?? 0) + 1;
           cycles.set(id, n);
-          sub?.onVerdict(verdict(id, "pane", levels[n % levels.length]!));
+          pushVerdict(verdict(id, "pane", levels[n % levels.length]!));
         }
+        summarySub?.(buildSummary());
       }, 7000);
+    },
+    async subscribeSummary(onSummary) {
+      summarySub = onSummary;
+      if (!sub) {
+        // The panel alone in a browser: seed the same story the board gets.
+        pushVerdict(verdict("aaaa-1", "claude", "attention"));
+        pushVerdict(verdict("bbbb-2", "claude", "working", "rule"));
+        pushVerdict(verdict("cccc-3", "claude", "attention", "rule"));
+        pushVerdict(verdict("%2", "pane", "failing"));
+        pushVerdict(verdict("%4", "pane", "warning"));
+        pushVerdict(verdict("%1", "pane", "working"));
+        for (const id of ["%3", "%7", "%8"]) pushVerdict(verdict(id, "pane", "idle", "rule"));
+      }
+      onSummary(buildSummary());
+    },
+    async openMain() {
+      console.info("[mock] open main window");
+    },
+    async hidePanel() {
+      console.info("[mock] hide panel");
+    },
+    async verdictsPath() {
+      return "~/.local/state/watchglass/verdicts.json";
     },
     async tmuxAvailable() {
       return true;
