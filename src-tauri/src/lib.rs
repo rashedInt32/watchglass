@@ -228,7 +228,10 @@ struct ServiceBus {
     store: Arc<Store>,
     subs: Arc<PanelSubs>,
     app: AppHandle<Wry>,
+    taps: Arc<TapManager>,
+    classifier: Arc<Classifier>,
     last_notified: Mutex<HashMap<String, Instant>>,
+    last_panes: Mutex<Vec<PaneInfo>>,
 }
 
 impl Bus for ServiceBus {
@@ -236,6 +239,20 @@ impl Bus for ServiceBus {
         true
     }
     fn panes(&self, panes: &[PaneInfo]) -> bool {
+        // A pane whose program just exited is at a prompt now: judge it again
+        // without waiting for output that may never come.
+        let changed = {
+            let mut last = self.last_panes.lock().expect("last panes");
+            let changed = jev::command_changes(&last, panes);
+            *last = panes.to_vec();
+            changed
+        };
+        for pane in changed {
+            let tail = self.taps.tail_text(&pane.id, jev::tail_lines()).unwrap_or_default();
+            if jev::pane_rule(&pane).is_some() || !tail.trim().is_empty() {
+                self.classifier.submit(Job::Pane { pane, tail });
+            }
+        }
         if let Some(s) = self.store.set_panes(panes.to_vec()) {
             publish(&self.app, &self.subs, &s, None);
         }
@@ -351,7 +368,10 @@ pub fn run() {
                     store: Arc::clone(&store),
                     subs: Arc::clone(&subs),
                     app: handle.clone(),
+                    taps: Arc::clone(&taps),
+                    classifier: Arc::clone(&classifier),
                     last_notified: Mutex::new(HashMap::new()),
+                    last_panes: Mutex::new(Vec::new()),
                 }),
             );
 

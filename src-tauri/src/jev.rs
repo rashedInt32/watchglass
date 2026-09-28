@@ -173,6 +173,32 @@ pub fn pane_rule(pane: &PaneInfo) -> Option<Level> {
     SHELLS.contains(&pane.command.as_str()).then_some(Level::Idle)
 }
 
+/// Below this, Jev's answer is a coin flip between neighbours (lazygit's
+/// screen scored working 0.42 against attention 0.24), so the level it last
+/// settled on stands. A first answer is taken as is: there is nothing better.
+pub const MIN_CONFIDENCE: f64 = 0.3;
+
+/// The level to publish and its source: "jev", or "hold" when a weak answer
+/// keeps the previous level.
+pub fn settle(answered: Level, confidence: f64, previous: Option<Level>) -> (Level, &'static str) {
+    match previous {
+        Some(prev) if confidence < MIN_CONFIDENCE && prev != answered => (prev, "hold"),
+        _ => (answered, "jev"),
+    }
+}
+
+/// Panes whose foreground command changed between two pane lists. Judgment
+/// otherwise runs only on output, and a program's exit prints its last
+/// screen while the list still names the program, so the shell rule would
+/// never get its turn.
+pub fn command_changes(before: &[PaneInfo], after: &[PaneInfo]) -> Vec<PaneInfo> {
+    after
+        .iter()
+        .filter(|p| before.iter().any(|b| b.id == p.id && b.command != p.command))
+        .cloned()
+        .collect()
+}
+
 pub fn parse_verdict(answer: &Value) -> Option<(Level, f64, HashMap<String, f64>)> {
     let a = answer.get("answers")?.get("level")?;
     let level = Level::parse(a.get("choice")?.as_str()?)?;
@@ -241,6 +267,7 @@ struct Pending {
 fn run(rx: Receiver<Job>, client: Option<JevClient>, bus: Arc<BusSlot>, log_path: Option<PathBuf>) {
     let pending: Mutex<HashMap<String, Pending>> = Mutex::new(HashMap::new());
     let mut seen: HashMap<String, u64> = HashMap::new();
+    let mut last_level: HashMap<String, Level> = HashMap::new();
     loop {
         // Gather everything that arrived, keeping the newest job per id. The
         // debounce restarts on each arrival but never past MAX_WAIT from the
@@ -285,6 +312,7 @@ fn run(rx: Receiver<Job>, client: Option<JevClient>, bus: Arc<BusSlot>, log_path
             }
             seen.insert(key, content_hash);
             if let Some(level) = rule {
+                last_level.insert(id.clone(), level);
                 let v = VerdictMsg {
                     id,
                     kind: kind.into(),
@@ -302,14 +330,16 @@ fn run(rx: Receiver<Job>, client: Option<JevClient>, bus: Arc<BusSlot>, log_path
                 continue;
             };
             match client.ask(state, questions).and_then(|v| parse_verdict(&v).ok_or_else(|| "jev: unexpected answer".into())) {
-                Ok((level, confidence, probabilities)) => {
+                Ok((answered, confidence, probabilities)) => {
+                    let (level, source) = settle(answered, confidence, last_level.get(&id).copied());
+                    last_level.insert(id.clone(), level);
                     let v = VerdictMsg {
                         id,
                         kind: kind.into(),
                         level,
                         confidence,
                         probabilities,
-                        source: "jev".into(),
+                        source: source.into(),
                         at: now_ms(),
                     };
                     log_verdict(&log_path, &v);
@@ -337,6 +367,26 @@ pub fn tail_lines() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weak_answers_hold_the_previous_level() {
+        assert_eq!(settle(Level::Attention, 0.19, Some(Level::Working)), (Level::Working, "hold"));
+        assert_eq!(settle(Level::Attention, 0.19, None), (Level::Attention, "jev"), "first answer is taken");
+        assert_eq!(settle(Level::Failing, 0.9, Some(Level::Working)), (Level::Failing, "jev"));
+        assert_eq!(settle(Level::Working, 0.1, Some(Level::Working)), (Level::Working, "jev"), "agreeing is not a hold");
+    }
+
+    #[test]
+    fn command_changes_finds_only_renamed_foregrounds() {
+        let line = |id: &str, cmd: &str| {
+            let f = [id, "s", "1", "w", "0", "1", cmd, "", "80", "24", "/x", "1", "1", "1", "0"];
+            crate::tmux::parse_line(&f.join(crate::tmux::SEP)).unwrap()
+        };
+        let before = vec![line("%1", "lazygit"), line("%2", "node")];
+        let after = vec![line("%1", "zsh"), line("%2", "node"), line("%3", "vim")];
+        let changed = command_changes(&before, &after);
+        assert_eq!(changed.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["%1"]);
+    }
 
     #[test]
     fn levels_order_by_priority() {

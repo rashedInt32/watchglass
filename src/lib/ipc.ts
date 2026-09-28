@@ -45,7 +45,8 @@ export type VerdictMsg = {
   level: Level;
   confidence: number;
   probabilities: Record<string, number>;
-  source: "jev" | "rule";
+  /** "hold": Jev's answer was too weak to move off the previous level. */
+  source: "jev" | "rule" | "hold";
   at: number;
 };
 
@@ -66,7 +67,7 @@ export type SessionRow = {
   paneId: string | null;
   level: Level;
   confidence: number;
-  source: "jev" | "rule" | "none";
+  source: "jev" | "rule" | "hold" | "none";
   snippet: string;
   updatedAt: number;
 };
@@ -82,7 +83,7 @@ export type PaneRow = {
   cwd: string;
   level: Level;
   confidence: number;
-  source: "jev" | "rule" | "none";
+  source: "jev" | "rule" | "hold" | "none";
   snippet: string;
 };
 

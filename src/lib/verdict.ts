@@ -28,7 +28,7 @@ export function shouldNotify(prev: Level | undefined, next: Level): boolean {
 export function describe(v: VerdictMsg | undefined): string {
   if (!v) return "";
   const word = LEVEL_WORD[v.level];
-  return v.source === "rule" ? word : `${word} · ${Math.round(v.confidence * 100)}%`;
+  return v.source === "jev" ? `${word} · ${Math.round(v.confidence * 100)}%` : word;
 }
 
 /** Ordinal for a pane in tmux order: session, window, pane. */
